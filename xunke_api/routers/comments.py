@@ -12,10 +12,10 @@ router = APIRouter(tags=["douyin-comments"])
 def _map_comment(raw: Dict[str, Any]) -> Dict[str, Any]:
     user = raw.get("user") or {}
     return {
-        "comment_id": raw.get("cid"),
+        "comment_id": str(raw.get("cid") or ""),
         "content": raw.get("text", ""),
-        "user_id": user.get("uid"),
-        "sec_uid": user.get("sec_uid"),
+        "user_id": str(user.get("uid") or ""),
+        "sec_uid": str(user.get("sec_uid") or ""),
         "nickname": user.get("nickname"),
         "avatar": (user.get("avatar_thumb") or {}).get("url_list", [""])[0]
         if isinstance(user.get("avatar_thumb"), dict)
@@ -23,11 +23,11 @@ def _map_comment(raw: Dict[str, Any]) -> Dict[str, Any]:
         "create_time": raw.get("create_time"),
         "like_count": raw.get("digg_count", 0),
         "reply_comment_total": raw.get("reply_comment_total", 0),
-        "parent_comment_id": raw.get("reply_id") or "0",
+        "parent_comment_id": str(raw.get("reply_id") or "0"),
         "ip_location": raw.get("ip_label", ""),
         "pictures": "",
-        "reply_to_reply_id": raw.get("reply_to_reply_id"),
-        "level": raw.get("level"),
+        "reply_to_reply_id": str(raw.get("reply_to_reply_id") or ""),
+        "level": str(raw.get("level")) if raw.get("level") is not None else "",
     }
 
 
@@ -51,8 +51,10 @@ async def get_dy_comments(
 
     try:
         res = await session.dy_client.get_aweme_comments(aweme_id=aweme_id, cursor=cursor)
+        print(f"DEBUG: Raw response from dy_client: {str(res)[:1000]}")
         await session_pool.touch_request(session.account_id)
         comments = [_map_comment(item) for item in (res.get("comments") or [])]
+        print(f"DEBUG: Mapped {len(comments)} comments")
         return ApiResponse(
             success=True,
             data={

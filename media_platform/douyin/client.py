@@ -235,7 +235,7 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
     async def get_sub_comments(self, aweme_id: str, comment_id: str, cursor: int = 0):
         """
             获取子评论
-        """
+    """
         uri = "/aweme/v1/web/comment/list/reply/"
         params = {
             'comment_id': comment_id,
