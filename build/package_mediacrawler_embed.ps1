@@ -76,7 +76,11 @@ if (Test-Path $artifactDir) { Remove-Item -Path $artifactDir -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $runtimeDir, $appDir, $logsDir | Out-Null
 
 Write-Step "Download Python embeddable runtime"
-Invoke-WebRequest -Uri $embedUrl -OutFile $embedZipPath
+if (-not (Test-Path $embedZipPath)) {
+    Invoke-WebRequest -Uri $embedUrl -OutFile $embedZipPath -UseBasicParsing
+} else {
+    Write-Host "    Using cached Python runtime zip"
+}
 Expand-Archive -LiteralPath $embedZipPath -DestinationPath $runtimeDir -Force
 
 $pthName = "python${pythonShort}._pth"
@@ -91,16 +95,21 @@ $pyExe = Join-Path $runtimeDir "python.exe"
 if (-not (Test-Path $pyExe)) { throw "runtime python.exe not found: $pyExe" }
 
 Write-Step "Install pip"
-Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $bootstrapPipPath
+if (-not (Test-Path $bootstrapPipPath)) {
+    Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $bootstrapPipPath -UseBasicParsing
+} else {
+    Write-Host "    Using cached get-pip.py"
+}
 Invoke-Checked ('"{0}" "{1}" --no-warn-script-location' -f $pyExe, $bootstrapPipPath) "Install pip failed"
 
 Write-Step "Download and install dependencies"
-Invoke-Checked ('"{0}" -m pip download setuptools wheel -d "{1}"' -f $pyExe, $wheelhouseDir) "Download build dependencies failed"
-Invoke-Checked ('"{0}" -m pip download -r "{1}" -d "{2}"' -f $pyExe, (Join-Path $repoRoot "requirements.txt"), $wheelhouseDir) "Download wheels failed"
+$pypiMirror = "https://pypi.tuna.tsinghua.edu.cn/simple"
+Invoke-Checked ('"{0}" -m pip download -i {1} -r "{2}" -d "{3}"' -f $pyExe, $pypiMirror, (Join-Path $repoRoot "requirements.txt"), $wheelhouseDir) "Download wheels failed"
 Invoke-Checked ('"{0}" -m pip install --no-index --find-links "{1}" -r "{2}"' -f $pyExe, $wheelhouseDir, (Join-Path $repoRoot "requirements.txt")) "Install dependencies failed"
 
 if (-not $SkipPlaywrightInstall) {
     Write-Step "Install Playwright Chromium"
+    $env:PLAYWRIGHT_DOWNLOAD_HOST = "https://npmmirror.com/mirrors/playwright/"
     Invoke-Checked ('"{0}" -m playwright install chromium' -f $pyExe) "Install Playwright failed"
 }
 
@@ -111,6 +120,12 @@ foreach ($item in $appItems) {
     if (Test-Path $src) {
         Copy-Item -Path $src -Destination (Join-Path $appDir $item) -Recurse -Force
     }
+}
+
+# 拷贝 nssm.exe 到产物根目录（如果开发者放入了的话）
+$nssmSrc = Join-Path $buildRoot "nssm.exe"
+if (Test-Path $nssmSrc) {
+    Copy-Item -Path $nssmSrc -Destination (Join-Path $artifactDir "nssm.exe") -Force
 }
 
 Write-Step "Write runtime scripts"
@@ -151,28 +166,32 @@ Set-Content -Path (Join-Path $artifactDir "run_bridge.bat") -Value $runBridgeLin
     "set CMD=""%ROOT%run_bridge.bat""",
     "set LOG_DIR=%ROOT%logs\bridge_service",
     "if not exist ""%LOG_DIR%"" mkdir ""%LOG_DIR%""",
-    "where nssm >nul 2>nul",
-    "if errorlevel 1 (",
-    "  echo nssm.exe not found in PATH.",
-    "  exit /b 1",
+    "set NSSM_EXE=%ROOT%nssm.exe",
+    "if not exist ""%NSSM_EXE%"" (",
+    "  set NSSM_EXE=nssm",
+    "  where nssm >nul 2>nul",
+    "  if errorlevel 1 (",
+    "    echo nssm.exe not found in current folder or PATH.",
+    "    exit /b 1",
+    "  )",
     ")",
-    "nssm stop %SVC_NAME% >nul 2>nul",
-    "nssm remove %SVC_NAME% confirm >nul 2>nul",
-    "nssm install %SVC_NAME% cmd.exe /c %CMD%",
+    """%NSSM_EXE%"" stop %SVC_NAME% >nul 2>nul",
+    """%NSSM_EXE%"" remove %SVC_NAME% confirm >nul 2>nul",
+    """%NSSM_EXE%"" install %SVC_NAME% cmd.exe /c %CMD%",
     "if errorlevel 1 (",
     "  echo failed to install service",
     "  exit /b 1",
     ")",
-    "nssm set %SVC_NAME% AppDirectory ""%ROOT%""",
-    "nssm set %SVC_NAME% DisplayName ""%DISPLAY_NAME%""",
-    "nssm set %SVC_NAME% Start SERVICE_AUTO_START",
-    "nssm set %SVC_NAME% AppExit Default Restart",
-    "nssm set %SVC_NAME% AppStdout ""%LOG_DIR%\stdout.log""",
-    "nssm set %SVC_NAME% AppStderr ""%LOG_DIR%\stderr.log""",
-    "nssm set %SVC_NAME% AppRotateFiles 1",
-    "nssm set %SVC_NAME% AppRotateOnline 1",
-    "nssm set %SVC_NAME% AppRotateBytes 10485760",
-    "nssm start %SVC_NAME%",
+    """%NSSM_EXE%"" set %SVC_NAME% AppDirectory ""%ROOT%""",
+    """%NSSM_EXE%"" set %SVC_NAME% DisplayName ""%DISPLAY_NAME%""",
+    """%NSSM_EXE%"" set %SVC_NAME% Start SERVICE_AUTO_START",
+    """%NSSM_EXE%"" set %SVC_NAME% AppExit Default Restart",
+    """%NSSM_EXE%"" set %SVC_NAME% AppStdout ""%LOG_DIR%\stdout.log""",
+    """%NSSM_EXE%"" set %SVC_NAME% AppStderr ""%LOG_DIR%\stderr.log""",
+    """%NSSM_EXE%"" set %SVC_NAME% AppRotateFiles 1",
+    """%NSSM_EXE%"" set %SVC_NAME% AppRotateOnline 1",
+    """%NSSM_EXE%"" set %SVC_NAME% AppRotateBytes 10485760",
+    """%NSSM_EXE%"" start %SVC_NAME%",
     "echo service installed: %SVC_NAME%"
 )
 Set-Content -Path (Join-Path $artifactDir "install_service.bat") -Value $installServiceLines -Encoding ascii
@@ -180,14 +199,19 @@ Set-Content -Path (Join-Path $artifactDir "install_service.bat") -Value $install
 [string[]]$uninstallServiceLines = @(
     "@echo off",
     "setlocal",
+    "set ROOT=%~dp0",
     "set SVC_NAME=XunKeMediaCrawlerBridge",
-    "where nssm >nul 2>nul",
-    "if errorlevel 1 (",
-    "  echo nssm.exe not found in PATH.",
-    "  exit /b 1",
+    "set NSSM_EXE=%ROOT%nssm.exe",
+    "if not exist ""%NSSM_EXE%"" (",
+    "  set NSSM_EXE=nssm",
+    "  where nssm >nul 2>nul",
+    "  if errorlevel 1 (",
+    "    echo nssm.exe not found in current folder or PATH.",
+    "    exit /b 1",
+    "  )",
     ")",
-    "nssm stop %SVC_NAME% >nul 2>nul",
-    "nssm remove %SVC_NAME% confirm",
+    """%NSSM_EXE%"" stop %SVC_NAME% >nul 2>nul",
+    """%NSSM_EXE%"" remove %SVC_NAME% confirm",
     "echo service removed: %SVC_NAME%"
 )
 Set-Content -Path (Join-Path $artifactDir "uninstall_service.bat") -Value $uninstallServiceLines -Encoding ascii
@@ -205,29 +229,9 @@ Set-Content -Path (Join-Path $artifactDir "uninstall_service.bat") -Value $unins
 )
 Set-Content -Path (Join-Path $artifactDir "README-PACKAGE.md") -Value $readmeLines -Encoding utf8
 
-Write-Step "Zip package"
-if (Test-Path $zipPath) { Remove-Item -Path $zipPath -Force }
-Compress-Archive -Path $artifactDir -DestinationPath $zipPath -Force
-
-Write-Step "Write release metadata"
-$hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-$size = (Get-Item -Path $zipPath).Length
-$releaseMetadata = [ordered]@{
-    component = "MediaCrawlerBridge"
-    version = $artifactVersion
-    platform = "win-x64"
-    channel = "stable"
-    fileName = [System.IO.Path]::GetFileName($zipPath)
-    fileSize = $size
-    sha256 = $hash
-    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
-    downloadUrl = "REPLACE_ME"
-}
-Set-Content -Path (Join-Path $outputRootAbs "$artifactName.release.json") -Value ($releaseMetadata | ConvertTo-Json -Depth 5) -Encoding utf8
-
 Write-Step "Done"
 Write-Host "artifact dir: $artifactDir" -ForegroundColor Green
-Write-Host "artifact zip: $zipPath" -ForegroundColor Green
+Write-Host "Skipped zip compression as it's handled by XunKe release." -ForegroundColor Cyan
 }
 catch {
     Write-Host ""
