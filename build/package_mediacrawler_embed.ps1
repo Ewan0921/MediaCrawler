@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$PythonVersion = "3.11.9",
     [string]$PackageVersion = "",
     [string]$OutputRoot = ".\dist",
@@ -104,6 +104,11 @@ Invoke-Checked ('"{0}" "{1}" --no-warn-script-location' -f $pyExe, $bootstrapPip
 
 Write-Step "Download and install dependencies"
 $pypiMirror = "https://pypi.tuna.tsinghua.edu.cn/simple"
+
+# Pre-download setuptools and wheel so that source distributions (e.g. jieba) can be built offline
+Invoke-Checked ('"{0}" -m pip download -i {1} setuptools wheel -d "{2}"' -f $pyExe, $pypiMirror, $wheelhouseDir) "Download setuptools/wheel failed"
+Invoke-Checked ('"{0}" -m pip install --no-index --find-links "{1}" setuptools wheel' -f $pyExe, $wheelhouseDir) "Install setuptools/wheel failed"
+
 Invoke-Checked ('"{0}" -m pip download -i {1} -r "{2}" -d "{3}"' -f $pyExe, $pypiMirror, (Join-Path $repoRoot "requirements.txt"), $wheelhouseDir) "Download wheels failed"
 Invoke-Checked ('"{0}" -m pip install --no-index --find-links "{1}" -r "{2}"' -f $pyExe, $wheelhouseDir, (Join-Path $repoRoot "requirements.txt")) "Install dependencies failed"
 
@@ -114,7 +119,7 @@ if (-not $SkipPlaywrightInstall) {
 }
 
 Write-Step "Copy app files"
-$appItems = @("api","cmd_arg","config","db.py","libs","media_platform","model","schema","store","tools","var.py","xunke_api","xunke_bridge.py","xunke_bridge.bat","xunke_bridge_install_service.bat","xunke_bridge_uninstall_service.bat",".env.xunke","requirements.txt","README.md")
+$appItems = @("api","base","cache","cmd_arg","config","constant","database","db.py","libs","media_platform","model","proxy","store","tools","var.py","xunke_api","xunke_bridge.py","xunke_bridge.bat",".env.xunke","requirements.txt","README.md")
 foreach ($item in $appItems) {
     $src = Join-Path $repoRoot $item
     if (Test-Path $src) {
@@ -157,75 +162,45 @@ Write-Step "Write runtime scripts"
 )
 Set-Content -Path (Join-Path $artifactDir "run_bridge.bat") -Value $runBridgeLines -Encoding ascii
 
-[string[]]$installServiceLines = @(
-    "@echo off",
-    "setlocal",
-    "set ROOT=%~dp0",
-    "set SVC_NAME=XunKeMediaCrawlerBridge",
-    "set DISPLAY_NAME=XunKe MediaCrawler Bridge",
-    "set CMD=""%ROOT%run_bridge.bat""",
-    "set LOG_DIR=%ROOT%logs\bridge_service",
-    "if not exist ""%LOG_DIR%"" mkdir ""%LOG_DIR%""",
-    "set NSSM_EXE=%ROOT%nssm.exe",
-    "if not exist ""%NSSM_EXE%"" (",
-    "  set NSSM_EXE=nssm",
-    "  where nssm >nul 2>nul",
-    "  if errorlevel 1 (",
-    "    echo nssm.exe not found in current folder or PATH.",
-    "    exit /b 1",
-    "  )",
-    ")",
-    """%NSSM_EXE%"" stop %SVC_NAME% >nul 2>nul",
-    """%NSSM_EXE%"" remove %SVC_NAME% confirm >nul 2>nul",
-    """%NSSM_EXE%"" install %SVC_NAME% cmd.exe /c %CMD%",
-    "if errorlevel 1 (",
-    "  echo failed to install service",
-    "  exit /b 1",
-    ")",
-    """%NSSM_EXE%"" set %SVC_NAME% AppDirectory ""%ROOT%""",
-    """%NSSM_EXE%"" set %SVC_NAME% DisplayName ""%DISPLAY_NAME%""",
-    """%NSSM_EXE%"" set %SVC_NAME% Start SERVICE_AUTO_START",
-    """%NSSM_EXE%"" set %SVC_NAME% AppExit Default Restart",
-    """%NSSM_EXE%"" set %SVC_NAME% AppStdout ""%LOG_DIR%\stdout.log""",
-    """%NSSM_EXE%"" set %SVC_NAME% AppStderr ""%LOG_DIR%\stderr.log""",
-    """%NSSM_EXE%"" set %SVC_NAME% AppRotateFiles 1",
-    """%NSSM_EXE%"" set %SVC_NAME% AppRotateOnline 1",
-    """%NSSM_EXE%"" set %SVC_NAME% AppRotateBytes 10485760",
-    """%NSSM_EXE%"" start %SVC_NAME%",
-    "echo service installed: %SVC_NAME%"
-)
-Set-Content -Path (Join-Path $artifactDir "install_service.bat") -Value $installServiceLines -Encoding ascii
+Write-Step "Copy service scripts"
+# 统一的服务安装/卸载脚本（自动检测打包/开发环境）
+foreach ($scriptName in @("install_service.bat", "uninstall_service.bat")) {
+    $scriptSrc = Join-Path $repoRoot $scriptName
+    if (Test-Path $scriptSrc) {
+        Copy-Item -Path $scriptSrc -Destination (Join-Path $artifactDir $scriptName) -Force
+        Write-Host "    Copied $scriptName"
+    } else {
+        Write-Warning "$scriptName not found at $scriptSrc"
+    }
+}
 
-[string[]]$uninstallServiceLines = @(
-    "@echo off",
-    "setlocal",
-    "set ROOT=%~dp0",
-    "set SVC_NAME=XunKeMediaCrawlerBridge",
-    "set NSSM_EXE=%ROOT%nssm.exe",
-    "if not exist ""%NSSM_EXE%"" (",
-    "  set NSSM_EXE=nssm",
-    "  where nssm >nul 2>nul",
-    "  if errorlevel 1 (",
-    "    echo nssm.exe not found in current folder or PATH.",
-    "    exit /b 1",
-    "  )",
-    ")",
-    """%NSSM_EXE%"" stop %SVC_NAME% >nul 2>nul",
-    """%NSSM_EXE%"" remove %SVC_NAME% confirm",
-    "echo service removed: %SVC_NAME%"
-)
-Set-Content -Path (Join-Path $artifactDir "uninstall_service.bat") -Value $uninstallServiceLines -Encoding ascii
+# 读取 .env.xunke 获取端口号（用于 README）
+$envFile = Join-Path $appDir ".env.xunke"
+$apiPort = "8090"
+if (Test-Path $envFile) {
+    $envLines = Get-Content -Path $envFile -Encoding UTF8
+    foreach ($line in $envLines) {
+        if ($line -match "^\s*API_PORT\s*=\s*(\d+)") {
+            $apiPort = $matches[1]
+        }
+    }
+}
 
 [string[]]$readmeLines = @(
     "# MediaCrawler XunKe Bridge (Embedded Runtime Package)",
     "",
     "## Quick Start",
-    "1. Edit app\.env.xunke.local (or copy from app\.env.xunke).",
-    "2. Run run_bridge.bat.",
-    "3. Or run install_service.bat to install Windows service.",
+    "1. (可选) 编辑 ``app\.env.xunke`` 修改端口等配置。",
+    "2. 方式一: 双击 ``run_bridge.bat`` 前台运行（调试用）。",
+    "3. 方式二: 右键 ``install_service.bat`` → 以管理员身份运行 → 安装为 Windows 服务。",
+    "",
+    "## 管理服务",
+    "- 卸载服务: 右键 ``uninstall_service.bat`` → 以管理员身份运行",
+    "- 查看状态: ``nssm status XunKeMediaCrawlerBridge``",
+    "- 查看日志: ``logs\bridge_service\`` 目录",
     "",
     "## Health Check",
-    "http://127.0.0.1:8090/api/health"
+    "http://127.0.0.1:$apiPort/api/health"
 )
 Set-Content -Path (Join-Path $artifactDir "README-PACKAGE.md") -Value $readmeLines -Encoding utf8
 

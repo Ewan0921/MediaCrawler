@@ -4,6 +4,7 @@ from fastapi import APIRouter, Query
 
 from xunke_api.schemas.responses import ApiResponse
 from xunke_api.services.session_pool import SessionInfo, SessionPool
+from tools.utils import logger
 
 
 router = APIRouter(tags=["douyin-comments"])
@@ -51,10 +52,10 @@ async def get_dy_comments(
 
     try:
         res = await session.dy_client.get_aweme_comments(aweme_id=aweme_id, cursor=cursor)
-        print(f"DEBUG: Raw response from dy_client: {str(res)[:1000]}")
+        logger.debug(f"DEBUG: Raw response from dy_client: {str(res)[:1000]}")
         await session_pool.touch_request(session.account_id)
         comments = [_map_comment(item) for item in (res.get("comments") or [])]
-        print(f"DEBUG: Mapped {len(comments)} comments")
+        logger.debug(f"DEBUG: Mapped {len(comments)} comments")
         return ApiResponse(
             success=True,
             data={

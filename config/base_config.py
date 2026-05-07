@@ -88,6 +88,13 @@ SAVE_DATA_OPTION = "jsonl"  # csv or db or json or jsonl or sqlite or excel or p
 # Data saving path, if not specified by default, it will be saved to the data folder.
 SAVE_DATA_PATH = ""
 
+# ==================== Logging Configuration ====================
+# Whether to enable file logging
+ENABLE_FILE_LOGGING = True
+
+# Data saving path, if not specified by default, it will be saved to the data folder.
+LOG_DIR = "../logs"
+
 # Browser file configuration cached by the user's browser
 USER_DATA_DIR = "%s_user_data_dir"  # %s will be replaced by platform name
 

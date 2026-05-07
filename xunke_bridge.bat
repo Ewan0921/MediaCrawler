@@ -9,7 +9,7 @@ if exist ".env.xunke" (
   )
 )
 
-if "%API_PORT%"=="" set API_PORT=8090
+if "%API_PORT%"=="" set API_PORT=8890
 
 echo Starting XunKe bridge on port %API_PORT% ...
 uvicorn xunke_bridge:app --host 0.0.0.0 --port %API_PORT%

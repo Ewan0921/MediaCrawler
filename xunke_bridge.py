@@ -6,11 +6,22 @@ Start command:
 
 import asyncio
 import sys
+import io
 import logging
+
+# Force UTF-8 encoding for stdout/stderr to prevent encoding errors
+if sys.stdout and hasattr(sys.stdout, 'buffer'):
+    if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if sys.stderr and hasattr(sys.stderr, 'buffer'):
+    if sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # 关键修复：解决 Windows 下 Playwright 子进程报错问题
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+from tools.utils import logger
 
 
 from fastapi import FastAPI
@@ -59,17 +70,16 @@ async def log_requests(request: Request, call_next):
     
     duration = (time.time() - start_time) * 1000
     
-    print(f"\n[DEBUG API] {request.method} {path}")
+    logger.debug(f"[DEBUG API] {request.method} {path}")
     if params:
-        print(f"      Params: {params}")
-    print(f"      Status: {response.status_code}")
-    print(f"      Duration: {duration:.2f}ms")
+        logger.debug(f"      Params: {params}")
+    logger.debug(f"      Status: {response.status_code}")
+    logger.debug(f"      Duration: {duration:.2f}ms")
     try:
         body_str = response_body.decode("utf-8")
-        print(f"      Response: {body_str[:500]}{'...' if len(body_str) > 500 else ''}")
+        logger.debug(f"      Response: {body_str[:500]}{'...' if len(body_str) > 500 else ''}")
     except:
-        print(f"      Response: <binary data or decode error>")
-    print("-" * 50)
+        logger.debug(f"      Response: <binary data or decode error>")
 
     return Response(
         content=response_body,
@@ -87,13 +97,28 @@ app.include_router(video_router)
 @app.on_event("startup")
 async def _startup() -> None:
     loop = asyncio.get_running_loop()
-    print(f"DEBUG: Current event loop: {type(loop).__name__}")
+    logger.info(f"DEBUG: Current event loop: {type(loop).__name__}")
     if sys.platform == 'win32' and type(loop).__name__ == 'SelectorEventLoop':
-        print("WARNING: SelectorEventLoop detected on Windows! Playwright may fail.")
+        logger.warning("WARNING: SelectorEventLoop detected on Windows! Playwright may fail.")
     await session_pool.startup()
 
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
     await session_pool.shutdown()
+
+
+if __name__ == "__main__":
+    import uvicorn
+    import os
+    from dotenv import load_dotenv
+    
+    # 加载环境配置
+    load_dotenv(".env.xunke")
+    
+    port = int(os.getenv("API_PORT", 8090))
+    host = os.getenv("API_HOST", "0.0.0.0")
+    
+    logger.info(f"Starting bridge on {host}:{port}...")
+    uvicorn.run("xunke_bridge:app", host=host, port=port, reload=False)
 

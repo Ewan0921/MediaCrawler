@@ -20,6 +20,10 @@
 
 import argparse
 import logging
+import os
+from logging.handlers import RotatingFileHandler
+
+import config
 
 from .crawler_util import *
 from .slider_util import *
@@ -28,10 +32,36 @@ from .time_util import *
 
 def init_loging_config():
     level = logging.INFO
+    handlers = [logging.StreamHandler()]
+
+    # check if enable file logging
+    if getattr(config, "ENABLE_FILE_LOGGING", False):
+        log_dir = getattr(config, "LOG_DIR", "logs")
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        log_file = os.path.join(log_dir, "mediacrawler.log")
+        # Use RotatingFileHandler to manage log size (10MB per file, keep 5 backups)
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding='utf-8'
+        )
+        file_handler.setFormatter(logging.Formatter(
+            fmt="%(asctime)s %(name)s %(levelname)s (%(filename)s:%(lineno)d) - %(message)s",
+            datefmt='%Y-%m-%d %H:%M:%S'
+        ))
+        handlers.append(file_handler)
+
+        # Also add file handler to uvicorn loggers if they exist
+        logging.getLogger("uvicorn").addHandler(file_handler)
+        logging.getLogger("uvicorn.access").addHandler(file_handler)
+
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(name)s %(levelname)s (%(filename)s:%(lineno)d) - %(message)s",
-        datefmt='%Y-%m-%d %H:%M:%S'
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=handlers
     )
     _logger = logging.getLogger("MediaCrawler")
     _logger.setLevel(level)
