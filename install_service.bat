@@ -20,8 +20,8 @@ set DISPLAY_NAME=XunKe MediaCrawler Bridge
 
 REM -- Auto-detect environment --
 REM   1. runtime\python.exe exists  => Full package mode
-REM   2. app\xunke_bridge.py exists => Source-only package mode
-REM   3. xunke_bridge.py in root    => Dev mode
+REM   2. app\xunke_bridge.py/pyc exists => Source-only package mode
+REM   3. xunke_bridge.py/pyc in root    => Dev mode
 
 if exist "%ROOT%runtime\python.exe" (
     set "PY_EXE=%ROOT%runtime\python.exe"
@@ -35,10 +35,20 @@ if exist "%ROOT%app\xunke_bridge.py" (
     echo [OK] Source-only package mode
     goto :find_system_python
 )
+if exist "%ROOT%app\xunke_bridge.pyc" (
+    set "APP_DIR=%ROOT%app"
+    echo [OK] Source-only package mode (Compiled)
+    goto :find_system_python
+)
 
 if exist "%ROOT%xunke_bridge.py" (
     set "APP_DIR=%ROOT%"
     echo [OK] Dev mode
+    goto :find_system_python
+)
+if exist "%ROOT%xunke_bridge.pyc" (
+    set "APP_DIR=%ROOT%"
+    echo [OK] Dev mode (Compiled)
     goto :find_system_python
 )
 
@@ -62,9 +72,12 @@ for /f "delims=" %%P in ('where python') do (
 echo     Python:  !PY_EXE!
 echo     App Dir: !APP_DIR!
 
-REM -- Check entry script --
-if not exist "!APP_DIR!\xunke_bridge.py" (
-    echo [ERROR] Entry script not found: !APP_DIR!\xunke_bridge.py
+set "ENTRY_EXIST=0"
+if exist "!APP_DIR!\xunke_bridge.py" set "ENTRY_EXIST=1"
+if exist "!APP_DIR!\xunke_bridge.pyc" set "ENTRY_EXIST=1"
+
+if "!ENTRY_EXIST!"=="0" (
+    echo [ERROR] Entry script not found: !APP_DIR!\xunke_bridge.py or .pyc
     echo.
     goto :pause_exit
 )

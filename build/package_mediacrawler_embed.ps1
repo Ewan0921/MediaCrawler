@@ -91,42 +91,45 @@ if (-not (Test-Path $pyExe)) {
     Set-Content -Path $pthPath -Value $pth -Encoding ascii
 
     if (-not (Test-Path $pyExe)) { throw "runtime python.exe not found: $pyExe" }
+
+    Write-Step "Install pip"
+    if (-not (Test-Path $bootstrapPipPath)) {
+        Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $bootstrapPipPath -UseBasicParsing
+    } else {
+        Write-Host "    Using cached get-pip.py"
+    }
+    Invoke-Checked ('"{0}" "{1}" --no-warn-script-location' -f $pyExe, $bootstrapPipPath) "Install pip failed"
+
+    Write-Step "Download and install dependencies"
+    $pypiMirror = "https://pypi.tuna.tsinghua.edu.cn/simple"
+    Invoke-Checked ('"{0}" -m pip download -i {1} setuptools wheel -d "{2}"' -f $pyExe, $pypiMirror, $wheelhouseDir) "Download setuptools/wheel failed"
+    Invoke-Checked ('"{0}" -m pip install --no-index --find-links "{1}" setuptools wheel' -f $pyExe, $wheelhouseDir) "Install setuptools/wheel failed"
+    Invoke-Checked ('"{0}" -m pip download -i {1} -r "{2}" -d "{3}"' -f $pyExe, $pypiMirror, (Join-Path $repoRoot "requirements.txt"), $wheelhouseDir) "Download wheels failed"
+    Invoke-Checked ('"{0}" -m pip install --no-index --find-links "{1}" -r "{2}"' -f $pyExe, $wheelhouseDir, (Join-Path $repoRoot "requirements.txt")) "Install dependencies failed"
+
+    if (-not $SkipPlaywrightInstall) {
+        Write-Step "Install Playwright Chromium"
+        $env:PLAYWRIGHT_DOWNLOAD_HOST = "https://npmmirror.com/mirrors/playwright/"
+        Invoke-Checked ('"{0}" -m playwright install chromium' -f $pyExe) "Install Playwright failed"
+    }
 } else {
-    Write-Host "    Existing runtime found at $runtimeDir, skipping download." -ForegroundColor Green
-}
-
-Write-Step "Install pip"
-if (-not (Test-Path $bootstrapPipPath)) {
-    Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $bootstrapPipPath -UseBasicParsing
-} else {
-    Write-Host "    Using cached get-pip.py"
-}
-Invoke-Checked ('"{0}" "{1}" --no-warn-script-location' -f $pyExe, $bootstrapPipPath) "Install pip failed"
-
-Write-Step "Download and install dependencies"
-$pypiMirror = "https://pypi.tuna.tsinghua.edu.cn/simple"
-
-# Pre-download setuptools and wheel so that source distributions (e.g. jieba) can be built offline
-Invoke-Checked ('"{0}" -m pip download -i {1} setuptools wheel -d "{2}"' -f $pyExe, $pypiMirror, $wheelhouseDir) "Download setuptools/wheel failed"
-Invoke-Checked ('"{0}" -m pip install --no-index --find-links "{1}" setuptools wheel' -f $pyExe, $wheelhouseDir) "Install setuptools/wheel failed"
-
-Invoke-Checked ('"{0}" -m pip download -i {1} -r "{2}" -d "{3}"' -f $pyExe, $pypiMirror, (Join-Path $repoRoot "requirements.txt"), $wheelhouseDir) "Download wheels failed"
-Invoke-Checked ('"{0}" -m pip install --no-index --find-links "{1}" -r "{2}"' -f $pyExe, $wheelhouseDir, (Join-Path $repoRoot "requirements.txt")) "Install dependencies failed"
-
-if (-not $SkipPlaywrightInstall) {
-    Write-Step "Install Playwright Chromium"
-    $env:PLAYWRIGHT_DOWNLOAD_HOST = "https://npmmirror.com/mirrors/playwright/"
-    Invoke-Checked ('"{0}" -m playwright install chromium' -f $pyExe) "Install Playwright failed"
+    Write-Host "    Existing runtime found at $runtimeDir, skipping environment setup." -ForegroundColor Green
 }
 
 Write-Step "Copy app files"
-$appItems = @("api","base","cache","cmd_arg","config","constant","database","db.py","libs","media_platform","model","proxy","store","tools","var.py","xunke_api","xunke_bridge.py","xunke_bridge.bat",".env.xunke","requirements.txt","README.md")
+$appItems = @("api","base","cache","cmd_arg","config","constant","database","db.py","libs","media_platform","model","proxy","store","tools","var.py","xunke_api","xunke_bridge.py","xunke_bridge.bat",".env.xunke","requirements.txt")
 foreach ($item in $appItems) {
     $src = Join-Path $repoRoot $item
     if (Test-Path $src) {
-        Copy-Item -Path $src -Destination (Join-Path $appDir $item) -Recurse -Force
+        Copy-Item -Path $src -Destination (Join-Path $appDir $item) -Recurse -Force -Exclude *.md
     }
 }
+
+Write-Step "Compiling source code to bytecode (.pyc)"
+# -b 选项会将 .pyc 文件生成在源码同级目录下，而不是 __pycache__
+Invoke-Checked ('"{0}" -m compileall -b -q -f "{1}"' -f $pyExe, $appDir) "Compile bytecode failed"
+Write-Host "    Removing source .py files to protect code..."
+Get-ChildItem -Path $appDir -Recurse -Filter "*.py" | Remove-Item -Force
 
 # 拷贝 nssm.exe 到产物根目录（如果开发者放入了的话）
 $nssmSrc = Join-Path $buildRoot "nssm.exe"
@@ -175,35 +178,6 @@ foreach ($scriptName in @("install_service.bat", "uninstall_service.bat")) {
     }
 }
 
-# 读取 .env.xunke 获取端口号（用于 README）
-$envFile = Join-Path $appDir ".env.xunke"
-$apiPort = "8090"
-if (Test-Path $envFile) {
-    $envLines = Get-Content -Path $envFile -Encoding UTF8
-    foreach ($line in $envLines) {
-        if ($line -match "^\s*API_PORT\s*=\s*(\d+)") {
-            $apiPort = $matches[1]
-        }
-    }
-}
-
-[string[]]$readmeLines = @(
-    "# MediaCrawler XunKe Bridge (Embedded Runtime Package)",
-    "",
-    "## Quick Start",
-    "1. (可选) 编辑 ``app\.env.xunke`` 修改端口等配置。",
-    "2. 方式一: 双击 ``run_bridge.bat`` 前台运行（调试用）。",
-    "3. 方式二: 右键 ``install_service.bat`` → 以管理员身份运行 → 安装为 Windows 服务。",
-    "",
-    "## 管理服务",
-    "- 卸载服务: 右键 ``uninstall_service.bat`` → 以管理员身份运行",
-    "- 查看状态: ``nssm status XunKeMediaCrawlerBridge``",
-    "- 查看日志: ``logs\bridge_service\`` 目录",
-    "",
-    "## Health Check",
-    "http://127.0.0.1:$apiPort/api/health"
-)
-Set-Content -Path (Join-Path $artifactDir "README-PACKAGE.md") -Value $readmeLines -Encoding utf8
 
 Write-Step "Done"
 Write-Host "artifact dir: $artifactDir" -ForegroundColor Green
