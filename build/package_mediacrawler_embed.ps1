@@ -43,12 +43,10 @@ try {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $buildRoot = Join-Path $repoRoot "build"
 $outputRootAbs = if ([System.IO.Path]::IsPathRooted($OutputRoot)) { $OutputRoot } else { Join-Path $repoRoot $OutputRoot }
-$artifactVersion = if ([string]::IsNullOrWhiteSpace($PackageVersion)) { (Get-Date -Format "yyyyMMdd-HHmmss") } else { $PackageVersion }
-$artifactName = "MediaCrawler-xunke-embed-$artifactVersion"
-$artifactDir = Join-Path $outputRootAbs $artifactName
-$runtimeDir = Join-Path $artifactDir "runtime"
-$appDir = Join-Path $artifactDir "app"
-$logsDir = Join-Path $artifactDir "logs"
+$runtimeDir = Join-Path $outputRootAbs "runtime"
+$appDir = Join-Path $outputRootAbs "app"
+$logsDir = Join-Path $outputRootAbs "logs"
+$artifactDir = $outputRootAbs
 $tempDir = Join-Path $buildRoot "tmp-package"
 $versionParts = $PythonVersion.Split(".")
 if ($versionParts.Length -lt 2) { throw "Invalid PythonVersion: $PythonVersion" }
@@ -66,33 +64,36 @@ Ensure-Command "python"
 if ($Clean) {
     Write-Step "Clean previous outputs"
     if (Test-Path $tempDir) { Remove-Item -Path $tempDir -Recurse -Force }
-    if (Test-Path $artifactDir) { Remove-Item -Path $artifactDir -Recurse -Force }
+    if (Test-Path $runtimeDir) { Remove-Item -Path $runtimeDir -Recurse -Force }
+    if (Test-Path $appDir) { Remove-Item -Path $appDir -Recurse -Force }
     if (Test-Path $zipPath) { Remove-Item -Path $zipPath -Force }
 }
 
-Write-Step "Prepare folders"
-New-Item -ItemType Directory -Force -Path $tempDir, $outputRootAbs, $wheelhouseDir | Out-Null
-if (Test-Path $artifactDir) { Remove-Item -Path $artifactDir -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $runtimeDir, $appDir, $logsDir | Out-Null
-
-Write-Step "Download Python embeddable runtime"
-if (-not (Test-Path $embedZipPath)) {
-    Invoke-WebRequest -Uri $embedUrl -OutFile $embedZipPath -UseBasicParsing
-} else {
-    Write-Host "    Using cached Python runtime zip"
-}
-Expand-Archive -LiteralPath $embedZipPath -DestinationPath $runtimeDir -Force
-
-$pthName = "python${pythonShort}._pth"
-$pthPath = Join-Path $runtimeDir $pthName
-if (-not (Test-Path $pthPath)) { throw "Cannot find $pthName" }
-$pth = Get-Content -Path $pthPath
-$pth = $pth | ForEach-Object { if ($_ -match "^\s*#\s*import site\s*$") { "import site" } else { $_ } }
-if (-not ($pth -contains "import site")) { $pth += "import site" }
-Set-Content -Path $pthPath -Value $pth -Encoding ascii
+New-Item -ItemType Directory -Force -Path $tempDir, $outputRootAbs, $wheelhouseDir, $runtimeDir, $appDir, $logsDir | Out-Null
 
 $pyExe = Join-Path $runtimeDir "python.exe"
-if (-not (Test-Path $pyExe)) { throw "runtime python.exe not found: $pyExe" }
+
+if (-not (Test-Path $pyExe)) {
+    Write-Step "Download and extract Python embeddable runtime"
+    if (-not (Test-Path $embedZipPath)) {
+        Invoke-WebRequest -Uri $embedUrl -OutFile $embedZipPath -UseBasicParsing
+    } else {
+        Write-Host "    Using cached Python runtime zip"
+    }
+    Expand-Archive -LiteralPath $embedZipPath -DestinationPath $runtimeDir -Force
+
+    $pthName = "python${pythonShort}._pth"
+    $pthPath = Join-Path $runtimeDir $pthName
+    if (-not (Test-Path $pthPath)) { throw "Cannot find $pthName" }
+    $pth = Get-Content -Path $pthPath
+    $pth = $pth | ForEach-Object { if ($_ -match "^\s*#\s*import site\s*$") { "import site" } else { $_ } }
+    if (-not ($pth -contains "import site")) { $pth += "import site" }
+    Set-Content -Path $pthPath -Value $pth -Encoding ascii
+
+    if (-not (Test-Path $pyExe)) { throw "runtime python.exe not found: $pyExe" }
+} else {
+    Write-Host "    Existing runtime found at $runtimeDir, skipping download." -ForegroundColor Green
+}
 
 Write-Step "Install pip"
 if (-not (Test-Path $bootstrapPipPath)) {
