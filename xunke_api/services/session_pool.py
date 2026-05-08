@@ -57,8 +57,8 @@ class SessionPool:
             browser = await self._playwright.chromium.connect_over_cdp(cdp_url)
             context = browser.contexts[0] if browser.contexts else await browser.new_context()
             page = context.pages[0] if context.pages else await context.new_page()
-            if "douyin.com" not in page.url:
-                await page.goto("https://www.douyin.com")
+            if "douyin.com/user/self" not in page.url:
+                await page.goto("https://www.douyin.com/user/self")
 
             dy_client = await create_douyin_client(page=page, browser_context=context)
             session = SessionInfo(

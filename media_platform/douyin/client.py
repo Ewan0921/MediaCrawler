@@ -220,19 +220,19 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
         res = await self.get("/aweme/v1/web/aweme/detail/", params, headers)
         return res.get("aweme_detail", {})
 
-    async def get_aweme_comments(self, aweme_id: str, cursor: int = 0):
+    async def get_aweme_comments(self, aweme_id: str, cursor: int = 0, count: int = 50):
         """get note comments
 
         """
         uri = "/aweme/v1/web/comment/list/"
-        params = {"aweme_id": aweme_id, "cursor": cursor, "count": 20, "item_type": 0}
+        params = {"aweme_id": aweme_id, "cursor": cursor, "count": count, "item_type": 0}
         keywords = request_keyword_var.get()
         referer_url = "https://www.douyin.com/search/" + keywords + '?aid=3a3cec5a-9e27-4040-b6aa-ef548c2c1138&publish_time=0&sort_type=0&source=search_history&type=general'
         headers = copy.copy(self.headers)
         headers["Referer"] = urllib.parse.quote(referer_url, safe=':/')
         return await self.get(uri, params)
 
-    async def get_sub_comments(self, aweme_id: str, comment_id: str, cursor: int = 0):
+    async def get_sub_comments(self, aweme_id: str, comment_id: str, cursor: int = 0, count: int = 50):
         """
             获取子评论
     """
@@ -240,7 +240,7 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
         params = {
             'comment_id': comment_id,
             "cursor": cursor,
-            "count": 20,
+            "count": count,
             "item_type": 0,
             "item_id": aweme_id,
         }

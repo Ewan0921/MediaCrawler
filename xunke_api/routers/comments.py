@@ -42,6 +42,7 @@ async def _resolve_session(pool: SessionPool, account_id: Optional[str]) -> Opti
 async def get_dy_comments(
     aweme_id: str = Query(..., min_length=1),
     cursor: int = Query(0, ge=0, description="抖音分页下标（不包含该下标位置）"),
+    count: int = Query(50, ge=1, le=100, description="每页抓取条数"),
     account_id: Optional[str] = Query(None),
 ) -> ApiResponse:
     from xunke_bridge import session_pool
@@ -51,7 +52,7 @@ async def get_dy_comments(
         return ApiResponse(success=False, error_code="NO_AVAILABLE_SESSION", error="No available session")
 
     try:
-        res = await session.dy_client.get_aweme_comments(aweme_id=aweme_id, cursor=cursor)
+        res = await session.dy_client.get_aweme_comments(aweme_id=aweme_id, cursor=cursor, count=count)
         logger.debug(f"DEBUG: Raw response from dy_client: {str(res)[:1000]}")
         await session_pool.touch_request(session.account_id)
         comments = [_map_comment(item) for item in (res.get("comments") or [])]
@@ -79,6 +80,7 @@ async def get_dy_comment_replies(
     aweme_id: str = Query(..., min_length=1),
     comment_id: str = Query(..., min_length=1),
     cursor: int = Query(0, ge=0, description="抖音分页下标（不包含该下标位置）"),
+    count: int = Query(50, ge=1, le=100, description="每页抓取条数"),
     account_id: Optional[str] = Query(None),
 ) -> ApiResponse:
     from xunke_bridge import session_pool
@@ -88,7 +90,7 @@ async def get_dy_comment_replies(
         return ApiResponse(success=False, error_code="NO_AVAILABLE_SESSION", error="No available session")
 
     try:
-        res = await session.dy_client.get_sub_comments(aweme_id=aweme_id, comment_id=comment_id, cursor=cursor)
+        res = await session.dy_client.get_sub_comments(aweme_id=aweme_id, comment_id=comment_id, cursor=cursor, count=count)
         await session_pool.touch_request(session.account_id)
         comments = [_map_comment(item) for item in (res.get("comments") or [])]
         return ApiResponse(
