@@ -62,13 +62,13 @@ function reset() {
 function write(e) {
     var a = "string" == typeof e ? function (e) {
         n = encodeURIComponent(e)['replace'](/%([0-9A-F]{2})/g, (function (e, r) {
-                return String['fromCharCode']("0x" + r)
-            }
+            return String['fromCharCode']("0x" + r)
+        }
         ))
             , a = new Array(n['length']);
         return Array['prototype']['forEach']['call'](n, (function (e, r) {
-                a[r] = e.charCodeAt(0)
-            }
+            a[r] = e.charCodeAt(0)
+        }
         )),
             a
     }(e) : e;
@@ -96,7 +96,7 @@ function sum(e, t) {
             i += se(this['reg'][f]['toString'](16), 8, "0")
     } else
         for (i = new Array(32),
-                 f = 0; f < 8; f++) {
+            f = 0; f < 8; f++) {
             var c = this.reg[f];
             i[4 * f + 3] = (255 & c) >>> 0,
                 c >>>= 8,
@@ -248,7 +248,7 @@ function generate_rc4_bb_str(url_search_params, user_agent, window_env_str, suff
      * 2: 对后缀两次sm3之的结果
      * 3: 对ua处理之后的结果
      */
-        // url_search_params两次sm3之的结果
+    // url_search_params两次sm3之的结果
     let url_search_params_list = sm3.sum(sm3.sum(url_search_params + suffix))
     // 对后缀两次sm3之的结果
     let cus = sm3.sum(sm3.sum(suffix))
