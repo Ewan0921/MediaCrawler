@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul 2>nul
 setlocal enabledelayedexpansion
 
 echo ============================================================
@@ -13,6 +12,7 @@ if errorlevel 1 (
     echo [ERROR] Please run this script as Administrator!
     echo         Right-click and select "Run as administrator".
     echo.
+    if "%~1"=="/silent" exit /b 1
     goto :pause_exit
 )
 
@@ -30,8 +30,12 @@ echo [OK] Found service: %SVC_NAME%
 
 REM -- Confirm --
 echo.
-set /p CONFIRM=Uninstall service %SVC_NAME%? (Y/N): 
-if /i not "!CONFIRM!"=="Y" (
+if "%~1"=="/silent" (
+    set "CONFIRM=Y"
+) else (
+    set /p "CONFIRM=Uninstall service %SVC_NAME%? (Y/N): "
+)
+if /i not "%CONFIRM%"=="Y" (
     echo.
     echo [CANCEL] Operation cancelled.
     echo.
@@ -47,6 +51,7 @@ if exist "%ROOT%nssm.exe" (
     if errorlevel 1 (
         echo [ERROR] nssm.exe not found. Place it in current dir or PATH.
         echo.
+        if "%~1"=="/silent" exit /b 1
         goto :pause_exit
     )
     set "NSSM_EXE=nssm"
@@ -66,6 +71,7 @@ if errorlevel 1 (
     echo.
     echo [ERROR] Failed to remove. Run manually: nssm remove %SVC_NAME% confirm
     echo.
+    if "%~1"=="/silent" exit /b 1
     goto :pause_exit
 )
 
@@ -75,5 +81,6 @@ echo   [SUCCESS] Service %SVC_NAME% has been uninstalled!
 echo ============================================================
 
 :pause_exit
+if "%~1"=="/silent" exit /b 0
 echo.
 pause

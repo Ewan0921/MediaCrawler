@@ -11,6 +11,7 @@ net session >nul 2>nul
 if errorlevel 1 (
     echo [ERROR] Please run this script as Administrator!
     echo.
+    if "%~1"=="/silent" exit /b 1
     goto :pause_exit
 )
 
@@ -54,6 +55,7 @@ if exist "%ROOT%xunke_bridge.pyc" (
 
 echo [ERROR] Cannot detect environment.
 echo         No runtime\python.exe, app\xunke_bridge.py, or xunke_bridge.py found.
+if "%~1"=="/silent" exit /b 1
 goto :pause_exit
 
 :find_system_python
@@ -61,6 +63,7 @@ where python >nul 2>nul
 if errorlevel 1 (
     echo [ERROR] Python not found. Please install Python and add to PATH.
     echo.
+    if "%~1"=="/silent" exit /b 1
     goto :pause_exit
 )
 for /f "delims=" %%P in ('where python') do (
@@ -79,6 +82,7 @@ if exist "!APP_DIR!\xunke_bridge.pyc" set "ENTRY_EXIST=1"
 if "!ENTRY_EXIST!"=="0" (
     echo [ERROR] Entry script not found: !APP_DIR!\xunke_bridge.py or .pyc
     echo.
+    if "%~1"=="/silent" exit /b 1
     goto :pause_exit
 )
 echo [OK] Entry script found
@@ -94,6 +98,7 @@ if errorlevel 1 (
     echo [ERROR] nssm.exe not found. Place it in current dir or PATH.
     echo         Download: https://nssm.cc/
     echo.
+    if "%~1"=="/silent" exit /b 1
     goto :pause_exit
 )
 set "NSSM_EXE=nssm"
@@ -132,6 +137,7 @@ if errorlevel 1 (
     echo.
     echo [ERROR] Service registration failed!
     echo.
+    if "%~1"=="/silent" exit /b 1
     goto :pause_exit
 )
 echo [OK] Service registered
@@ -202,5 +208,6 @@ echo     Edit:     nssm edit %SVC_NAME%
 echo ============================================================
 
 :pause_exit
+if "%~1"=="/silent" exit /b 0
 echo.
 pause
