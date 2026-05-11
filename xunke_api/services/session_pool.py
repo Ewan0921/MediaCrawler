@@ -42,7 +42,14 @@ class SessionPool:
             for account_id in list(self._sessions.keys()):
                 await self._close_session(account_id)
         if self._playwright_ctx is not None:
-            await self._playwright_ctx.__aexit__(None, None, None)
+            try:
+                # 兼容不同版本的 Playwright 退出方式
+                if hasattr(self._playwright_ctx, "stop"):
+                    await self._playwright_ctx.stop()
+                else:
+                    await self._playwright_ctx.__aexit__(None, None, None)
+            except Exception as e:
+                utils.logger.warning(f"[xunke_bridge] Playwright shutdown warning: {e}")
         self._playwright = None
         self._playwright_ctx = None
         utils.logger.info("[xunke_bridge] SessionPool shutdown complete")

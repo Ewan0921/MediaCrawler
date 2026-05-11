@@ -74,6 +74,11 @@ async def search_dy_videos(
                 aweme_info = post_item.get("aweme_info") or post_item.get("aweme_mix_info", {}).get("mix_items", [{}])[0]
                 if not aweme_info:
                     continue
+                
+                # 过滤非视频内容：必须包含有效视频对象及播放地址
+                video = aweme_info.get("video", {})
+                if not video or not video.get("play_addr"):
+                    continue
 
                 author = aweme_info.get("author", {})
                 stats = aweme_info.get("statistics", {})
