@@ -42,7 +42,7 @@ class SessionPool:
             for account_id in list(self._sessions.keys()):
                 await self._close_session(account_id)
         if self._playwright_ctx is not None:
-            await self._playwright_ctx.stop()
+            await self._playwright_ctx.__aexit__(None, None, None)
         self._playwright = None
         self._playwright_ctx = None
         utils.logger.info("[xunke_bridge] SessionPool shutdown complete")

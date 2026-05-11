@@ -43,6 +43,7 @@ async def search_dy_videos(
     offset: int = Query(0, ge=0),
     count: int = Query(20, ge=1, le=50),
     account_id: Optional[str] = Query(None),
+    search_id: str = Query(""),
 ) -> ApiResponse:
     from xunke_bridge import session_pool
     from media_platform.douyin.field import SearchChannelType
@@ -52,11 +53,17 @@ async def search_dy_videos(
         return ApiResponse(success=False, error_code="NO_AVAILABLE_SESSION", error="No available session")
 
     try:
+        # 预检查浏览器连接状态
+        if not session.browser.is_connected():
+            await session_pool.unregister(session.account_id)
+            return ApiResponse(success=False, error_code="BROWSER_DISCONNECTED", error="Browser connection lost")
+
         # 使用 VIDEO 频道进行搜索，确保返回的是视频内容
         res = await session.dy_client.search_info_by_keyword(
             keyword=keyword,
             offset=offset,
-            search_channel=SearchChannelType.VIDEO
+            search_channel=SearchChannelType.VIDEO,
+            search_id=search_id
         )
         await session_pool.touch_request(session.account_id)
 
@@ -94,14 +101,30 @@ async def search_dy_videos(
             except (KeyError, IndexError, TypeError):
                 continue
 
+        # 兼容性提取 search_id (抖音综合搜索接口通常放在 extra.logid 或 log_pb.impr_id)
+        raw_search_id = (
+            res.get("search_id") 
+            or res.get("extra", {}).get("logid") 
+            or res.get("log_pb", {}).get("impr_id") 
+            or ""
+        )
+
         return ApiResponse(
             success=True,
             data={
                 "items": items,
                 "has_more": bool(res.get("has_more", False)),
-                "cursor": offset + len(items)
+                "cursor": res.get("cursor") or (offset + 15),
+                "search_id": raw_search_id
             }
         )
     except Exception as exc:
-        return ApiResponse(success=False, error_code="UNKNOWN_ERROR", error=str(exc))
+        error_msg = str(exc)
+        if "Target page, context or browser has been closed" in error_msg:
+            try:
+                await session_pool.unregister(session.account_id)
+            except:
+                pass
+            return ApiResponse(success=False, error_code="BROWSER_DISCONNECTED", error="Browser connection lost during request")
+        return ApiResponse(success=False, error_code="UNKNOWN_ERROR", error=error_msg)
 
