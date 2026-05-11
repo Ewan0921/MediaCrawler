@@ -79,10 +79,15 @@ async def search_dy_videos(
                 stats = aweme_info.get("statistics", {})
                 video = aweme_info.get("video", {})
 
+                # 尝试从多个字段获取发布时间
+                create_time = aweme_info.get("create_time") or aweme_info.get("create_time_v2")
+                if not create_time and "create_time" in post_item:
+                    create_time = post_item.get("create_time")
+                
                 items.append({
                     "aweme_id": aweme_info.get("aweme_id"),
                     "desc": aweme_info.get("desc"),
-                    "create_time": aweme_info.get("create_time"),
+                    "create_time": create_time,
                     "author": {
                         "uid": author.get("uid"),
                         "sec_uid": author.get("sec_uid"),
